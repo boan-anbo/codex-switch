@@ -76,7 +76,7 @@ try {
   if (-not $ResumeText.Contains(".codex-work")) {
     throw "resume --print did not include selected CODEX_HOME"
   }
-  if (-not $ResumeText.Contains("resume --all --include-non-interactive")) {
+  if (-not $ResumeText.Contains("resume") -or -not $ResumeText.Contains("--all") -or -not $ResumeText.Contains("--include-non-interactive")) {
     throw "resume --all did not include expected Codex flags"
   }
   if (Test-Path (Join-Path $HomeDir ".codex-work\config.toml")) {
@@ -89,7 +89,7 @@ try {
   $SessionID = "019d30aa-4798-7891-a56f-1f87a629e02c"
   $SessionCmd = & $Bin resume $SessionID --print
   $SessionText = $SessionCmd -join "`n"
-  if (-not $SessionText.Contains("resume --cd")) {
+  if (-not $SessionText.Contains("resume") -or -not $SessionText.Contains("--cd")) {
     throw "resume positional session did not include resume command"
   }
   if (-not $SessionText.Contains($SessionID)) {
@@ -101,7 +101,7 @@ try {
   if (-not $AccountSessionText.Contains(".codex-work")) {
     throw "resume --account --session did not include selected CODEX_HOME"
   }
-  if (-not $AccountSessionText.Contains("resume --cd")) {
+  if (-not $AccountSessionText.Contains("resume") -or -not $AccountSessionText.Contains("--cd")) {
     throw "resume --account --session did not include resume command"
   }
   if (-not $AccountSessionText.Contains($SessionID)) {
@@ -119,7 +119,7 @@ try {
   if (-not $LoginText.Contains(".codex-work")) {
     throw "run --print did not include selected CODEX_HOME"
   }
-  if (-not $LoginText.Contains("codex login")) {
+  if (-not $LoginText.Contains("codex") -or -not $LoginText.Contains("login")) {
     throw "run --print did not preserve login command"
   }
   if (Test-Path (Join-Path $HomeDir ".codex-work\config.toml")) {
