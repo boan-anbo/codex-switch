@@ -1,0 +1,200 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GORELEASER_VERSION: v2.15.4
+  SHFMT_VERSION: v3.12.0
+  STATICCHECK_VERSION: v0.7.0
+  GOVULNCHECK_VERSION: v1.3.0
+  GOTOOLCHAIN: auto
+
+jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Lint GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Check shell script syntax
+        shell: bash
+        run: |
+          for script in scripts/*.sh; do
+            sh -n "$script"
+          done
+      - name: Check shell script formatting
+        run: go run mvdan.cc/sh/v3/cmd/shfmt@${{ env.SHFMT_VERSION }} -d -i 2 -ci scripts/*.sh
+
+  module-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check go.mod/go.sum tidiness
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        shell: bash
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files"
+            echo "Run gofmt before committing." >&2
+            exit 1
+          fi
+      - run: go test ./...
+      - run: go vet ./...
+
+  vulnerability-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@${{ env.STATICCHECK_VERSION }} ./...
+
+  race-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run race detector
+        run: go test -race ./...
+
+  install-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Smoke install script
+        if: runner.os != 'Windows'
+        shell: bash
+        run: RUN_INSTALL_SMOKE=1 ./scripts/smoke.sh
+      - name: Smoke install script
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:RUN_INSTALL_SMOKE = "1"
+          $env:CODEX_HOME = "preserve-codex-home"
+          $env:CODEX_SWITCH_CONFIG = "preserve-config"
+          $env:CODEX_SWITCH_CACHE = "preserve-cache"
+          ./scripts/smoke.ps1
+          if (
+            $env:CODEX_HOME -ne "preserve-codex-home" -or
+            $env:CODEX_SWITCH_CONFIG -ne "preserve-config" -or
+            $env:CODEX_SWITCH_CACHE -ne "preserve-cache"
+          ) {
+            throw "smoke.ps1 did not restore caller environment"
+          }
+
+  package-snapshot:
+    needs: [workflow-lint, module-check, test, vulnerability-check, static-analysis, race-test, install-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --snapshot --clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  archive-smoke:
+    needs: package-snapshot
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist
+      - name: Smoke release archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/archive-smoke.sh
+      - name: Smoke release archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:CODEX_SWITCH_RELEASE_DIR = "preserve-release-dir"
+          $env:BIN_DIR = "preserve-bin"
+          $env:CODEX_HOME = "preserve-codex-home"
+          ./scripts/archive-smoke.ps1
+          if (
+            $env:CODEX_SWITCH_RELEASE_DIR -ne "preserve-release-dir" -or
+            $env:BIN_DIR -ne "preserve-bin" -or
+            $env:CODEX_HOME -ne "preserve-codex-home"
+          ) {
+            throw "archive-smoke.ps1 did not restore caller environment"
+          }

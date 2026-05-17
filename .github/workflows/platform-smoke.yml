@@ -1,0 +1,246 @@
+name: platform-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Coverage tier: core is cheap/default, full adds secondary native OS/arch runners"
+        required: false
+        default: core
+        type: choice
+        options:
+          - core
+          - full
+  schedule:
+    - cron: "37 9 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GORELEASER_VERSION: v2.15.4
+  GOTOOLCHAIN: auto
+
+jobs:
+  package-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --snapshot --clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  core-native-smoke:
+    needs: package-snapshot
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-latest
+            shell: bash
+            goos: linux
+            goarch: amd64
+          - name: macos-arm64
+            os: macos-15
+            shell: bash
+            goos: darwin
+            goarch: arm64
+          - name: windows-amd64
+            os: windows-latest
+            shell: pwsh
+            goos: windows
+            goarch: amd64
+    name: core-${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist
+      - name: Show native Go target
+        run: go env GOOS GOARCH
+      - name: Check native Go target
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: |
+          actual="$(go env GOOS)/$(go env GOARCH)"
+          expected="${{ matrix.goos }}/${{ matrix.goarch }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "expected $expected, got $actual" >&2
+            exit 1
+          fi
+      - name: Check native Go target
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $actual = "$(go env GOOS)/$(go env GOARCH)"
+          $expected = "${{ matrix.goos }}/${{ matrix.goarch }}"
+          if ($actual -ne $expected) {
+            throw "expected $expected, got $actual"
+          }
+      - name: Run tests
+        run: go test ./...
+      - name: Run go vet
+        run: go vet ./...
+      - name: Smoke source install
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: RUN_INSTALL_SMOKE=1 ./scripts/smoke.sh
+      - name: Smoke source install
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:RUN_INSTALL_SMOKE = "1"
+          $env:CODEX_HOME = "preserve-codex-home"
+          $env:CODEX_SWITCH_CONFIG = "preserve-config"
+          $env:CODEX_SWITCH_CACHE = "preserve-cache"
+          ./scripts/smoke.ps1
+          if (
+            $env:CODEX_HOME -ne "preserve-codex-home" -or
+            $env:CODEX_SWITCH_CONFIG -ne "preserve-config" -or
+            $env:CODEX_SWITCH_CACHE -ne "preserve-cache"
+          ) {
+            throw "smoke.ps1 did not restore caller environment"
+          }
+      - name: Smoke native release archive
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: ./scripts/archive-smoke.sh
+      - name: Smoke native release archive
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:CODEX_SWITCH_RELEASE_DIR = "preserve-release-dir"
+          $env:BIN_DIR = "preserve-bin"
+          $env:CODEX_HOME = "preserve-codex-home"
+          ./scripts/archive-smoke.ps1
+          if (
+            $env:CODEX_SWITCH_RELEASE_DIR -ne "preserve-release-dir" -or
+            $env:BIN_DIR -ne "preserve-bin" -or
+            $env:CODEX_HOME -ne "preserve-codex-home"
+          ) {
+            throw "archive-smoke.ps1 did not restore caller environment"
+          }
+
+  full-native-smoke:
+    needs: package-snapshot
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.tier == 'full' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            shell: bash
+            goos: linux
+            goarch: arm64
+          - name: macos-amd64
+            os: macos-15-intel
+            shell: bash
+            goos: darwin
+            goarch: amd64
+          - name: windows-arm64
+            os: windows-11-arm
+            shell: pwsh
+            goos: windows
+            goarch: arm64
+    name: full-${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist
+      - name: Show native Go target
+        run: go env GOOS GOARCH
+      - name: Check native Go target
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: |
+          actual="$(go env GOOS)/$(go env GOARCH)"
+          expected="${{ matrix.goos }}/${{ matrix.goarch }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "expected $expected, got $actual" >&2
+            exit 1
+          fi
+      - name: Check native Go target
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $actual = "$(go env GOOS)/$(go env GOARCH)"
+          $expected = "${{ matrix.goos }}/${{ matrix.goarch }}"
+          if ($actual -ne $expected) {
+            throw "expected $expected, got $actual"
+          }
+      - name: Run tests
+        run: go test ./...
+      - name: Run go vet
+        run: go vet ./...
+      - name: Smoke source install
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: RUN_INSTALL_SMOKE=1 ./scripts/smoke.sh
+      - name: Smoke source install
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:RUN_INSTALL_SMOKE = "1"
+          $env:CODEX_HOME = "preserve-codex-home"
+          $env:CODEX_SWITCH_CONFIG = "preserve-config"
+          $env:CODEX_SWITCH_CACHE = "preserve-cache"
+          ./scripts/smoke.ps1
+          if (
+            $env:CODEX_HOME -ne "preserve-codex-home" -or
+            $env:CODEX_SWITCH_CONFIG -ne "preserve-config" -or
+            $env:CODEX_SWITCH_CACHE -ne "preserve-cache"
+          ) {
+            throw "smoke.ps1 did not restore caller environment"
+          }
+      - name: Smoke native release archive
+        if: matrix.shell == 'bash'
+        shell: bash
+        run: ./scripts/archive-smoke.sh
+      - name: Smoke native release archive
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:CODEX_SWITCH_RELEASE_DIR = "preserve-release-dir"
+          $env:BIN_DIR = "preserve-bin"
+          $env:CODEX_HOME = "preserve-codex-home"
+          ./scripts/archive-smoke.ps1
+          if (
+            $env:CODEX_SWITCH_RELEASE_DIR -ne "preserve-release-dir" -or
+            $env:BIN_DIR -ne "preserve-bin" -or
+            $env:CODEX_HOME -ne "preserve-codex-home"
+          ) {
+            throw "archive-smoke.ps1 did not restore caller environment"
+          }
