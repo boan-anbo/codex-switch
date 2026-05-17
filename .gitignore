@@ -1,0 +1,16 @@
+.DS_Store
+
+# Local build/test outputs
+/codex-switch
+/codex-switch.exe
+/dist/
+*.test
+
+# Local secrets and account state
+.env
+.env.*
+.codex/
+.codex-*/
+auth.json
+*.pem
+*.key

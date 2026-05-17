@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a codex-switch bug.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste auth tokens, refresh tokens, bearer strings, or raw auth.json contents.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `codex-switch version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: macOS, Linux, or Windows version.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Command that triggered the issue.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redact account/token details.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Account home layout, config shape, or `codex-switch doctor` output with secrets redacted. Do not paste raw auth files.
+      render: shell
+  - type: textarea
+    id: isolation
+    attributes:
+      label: Account isolation impact
+      description: Did the issue affect the wrong CODEX_HOME, auth state, sessions, or quota/status for another account?
+    validations:
+      required: false
