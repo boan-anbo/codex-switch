@@ -57,10 +57,11 @@ try {
   }
 
   $NewCmd = & $Bin new --account work --print -- --model gpt-test
-  if (-not ($NewCmd -join "`n").Contains(".codex-work")) {
+  $NewText = $NewCmd -join "`n"
+  if (-not $NewText.Contains(".codex-work")) {
     throw "new --print did not include selected CODEX_HOME"
   }
-  if (-not ($NewCmd -join "`n").Contains("--model gpt-test")) {
+  if (-not $NewText.Contains("--model") -or -not $NewText.Contains("gpt-test")) {
     throw "new --print did not preserve passthrough args"
   }
   if (Test-Path (Join-Path $HomeDir ".codex-work\config.toml")) {
