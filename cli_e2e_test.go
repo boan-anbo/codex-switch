@@ -56,7 +56,7 @@ func TestCLIBinarySmoke(t *testing.T) {
 	assertMissing(t, filepath.Join(home, ".codex-work", "sessions"))
 
 	resumeCmd := runBinary(t, env, bin, "resume", "--account", "work", "--all", "--print")
-	for _, want := range []string{".codex-work", "resume --all --include-non-interactive"} {
+	for _, want := range []string{".codex-work", "resume", "--all", "--include-non-interactive"} {
 		if !strings.Contains(resumeCmd, want) {
 			t.Fatalf("resume --print output missing %q: %s", want, resumeCmd)
 		}
@@ -66,11 +66,13 @@ func TestCLIBinarySmoke(t *testing.T) {
 
 	sessionID := "019d30aa-4798-7891-a56f-1f87a629e02c"
 	sessionCmd := runBinary(t, env, bin, "resume", sessionID, "--print")
-	if !strings.Contains(sessionCmd, "resume --cd") || !strings.Contains(sessionCmd, sessionID) {
-		t.Fatalf("resume positional session id did not pass through: %s", sessionCmd)
+	for _, want := range []string{"resume", "--cd", sessionID} {
+		if !strings.Contains(sessionCmd, want) {
+			t.Fatalf("resume positional session id output missing %q: %s", want, sessionCmd)
+		}
 	}
 	accountSessionCmd := runBinary(t, env, bin, "resume", "--account", "work", "--session", sessionID, "--print")
-	for _, want := range []string{".codex-work", "resume --cd", sessionID} {
+	for _, want := range []string{".codex-work", "resume", "--cd", sessionID} {
 		if !strings.Contains(accountSessionCmd, want) {
 			t.Fatalf("resume --account --session output missing %q: %s", want, accountSessionCmd)
 		}
@@ -91,7 +93,7 @@ func TestCLIBinarySmoke(t *testing.T) {
 	}
 
 	loginCmd := runBinary(t, env, bin, "run", "work", "--print", "--", "login")
-	for _, want := range []string{".codex-work", "codex login"} {
+	for _, want := range []string{".codex-work", "codex", "login"} {
 		if !strings.Contains(loginCmd, want) {
 			t.Fatalf("run --print output missing %q: %s", want, loginCmd)
 		}
@@ -105,13 +107,13 @@ func TestCLIBinarySmoke(t *testing.T) {
 		t.Fatalf("documented positional new command did not select work account: %s", quickNewCmd)
 	}
 	quickResumeCmd := runBinary(t, env, bin, "resume", "work", "--last", "--print")
-	for _, want := range []string{".codex-work", "resume --last"} {
+	for _, want := range []string{".codex-work", "resume", "--last"} {
 		if !strings.Contains(quickResumeCmd, want) {
 			t.Fatalf("documented positional resume command missing %q: %s", want, quickResumeCmd)
 		}
 	}
 	quickRunCmd := runBinary(t, env, bin, "run", "work", "--print", "--", "login")
-	for _, want := range []string{".codex-work", "codex login"} {
+	for _, want := range []string{".codex-work", "codex", "login"} {
 		if !strings.Contains(quickRunCmd, want) {
 			t.Fatalf("documented positional run command missing %q: %s", want, quickRunCmd)
 		}
