@@ -47,7 +47,7 @@ func TestCLIBinarySmoke(t *testing.T) {
 	}
 
 	newCmd := runBinary(t, env, bin, "new", "--account", "work", "--print", "--", "--model", "gpt-test")
-	for _, want := range []string{".codex-work", "--model gpt-test"} {
+	for _, want := range []string{".codex-work", "--model", "gpt-test"} {
 		if !strings.Contains(newCmd, want) {
 			t.Fatalf("new --print output missing %q: %s", want, newCmd)
 		}

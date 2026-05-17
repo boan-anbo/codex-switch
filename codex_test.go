@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -84,7 +85,11 @@ func TestLaunchCodexPrintsSelectedHomeCommand(t *testing.T) {
 	if launchErr != nil {
 		t.Fatal(launchErr)
 	}
-	if strings.TrimSpace(out) != "CODEX_HOME='/tmp/codex work' codex resume abc" {
+	want := "CODEX_HOME='/tmp/codex work' codex resume abc"
+	if runtime.GOOS == "windows" {
+		want = "$env:CODEX_HOME='/tmp/codex work'; & 'codex' 'resume' 'abc'"
+	}
+	if strings.TrimSpace(out) != want {
 		t.Fatalf("unexpected print output: %q", out)
 	}
 }

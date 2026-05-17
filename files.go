@@ -56,7 +56,11 @@ func renameFile(oldPath string, newPath string) error {
 	if _, statErr := os.Stat(oldPath); statErr != nil {
 		return err
 	}
-	if _, statErr := os.Stat(newPath); statErr != nil {
+	info, statErr := os.Lstat(newPath)
+	if statErr != nil {
+		return err
+	}
+	if info.IsDir() {
 		return err
 	}
 	if err := os.Remove(newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
